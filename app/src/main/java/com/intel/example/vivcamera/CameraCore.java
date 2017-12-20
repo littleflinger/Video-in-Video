@@ -1,5 +1,6 @@
 package com.intel.example.vivcamera;
 
+import android.annotation.SuppressLint;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
@@ -23,11 +24,12 @@ public class CameraCore {
     private static final String TAG = "CameraCore";
     private HandlerThread mHandlerThread;
     private Handler mHandler;
-    private List<SurfaceTexture> mSurfaces = new ArrayList<>();
     private CameraManager mCameraManager;
+    private SurfaceTexture[] mSurfaces = new SurfaceTexture[2];
     private CameraDevice[] mCameraDevice = new CameraDevice[2];
     private CameraCaptureSession[] mCameraCaptureSession = new CameraCaptureSession[2];
     private String Rear_Facing_Camera = null, Front_Facing_Camera = null;
+    private final String lock = "lock";
 
     public static final int REAR_FACING_CAMERA = 0;
     public static final int FRONT_FACING_CAMERA = 1;
@@ -40,29 +42,40 @@ public class CameraCore {
 
         for (String cameraId : mCameraManager.getCameraIdList()) {
             CameraCharacteristics cameraCharacteristics = mCameraManager.getCameraCharacteristics(cameraId);
+            Log.d(TAG,  "camera id: " + cameraId + ", facing: " + cameraCharacteristics.get(CameraCharacteristics.LENS_FACING));
+        }
+/*
+        for (String cameraId : mCameraManager.getCameraIdList()) {
+            CameraCharacteristics cameraCharacteristics = mCameraManager.getCameraCharacteristics(cameraId);
             if (cameraCharacteristics.get(CameraCharacteristics.LENS_FACING) ==
                     CameraCharacteristics.LENS_FACING_BACK) {
                 Rear_Facing_Camera = cameraId;
+                Log.d(TAG, "rear camera: " + cameraId);
             } else if (cameraCharacteristics.get(CameraCharacteristics.LENS_FACING) ==
                     CameraCharacteristics.LENS_FACING_FRONT) {
                 Front_Facing_Camera = cameraId;
+                Log.d(TAG, "front camera: " + cameraId);
             }
         }
+        */
+        Rear_Facing_Camera = "0";
+        Front_Facing_Camera = "1";
     }
 
+    @SuppressLint("MissingPermission")
     public void Open(int cameraId, SurfaceTexture surface, int width, int height) throws CameraAccessException {
         String id = toIdString(cameraId);
         CameraCharacteristics characteristics = mCameraManager.getCameraCharacteristics(id);
         StreamConfigurationMap info = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
         Size optimalSize = chooseBigEnoughSize(info.getOutputSizes(surface.getClass()), width, height);
         surface.setDefaultBufferSize(optimalSize.getWidth(), optimalSize.getHeight());
-        mSurfaces.add(surface);
+        mSurfaces[cameraId] = surface;
         mCameraManager.openCamera(id, new CameraDevice.StateCallback() {
             @Override
             public void onOpened(CameraDevice camera) {
                 mCameraDevice[getDeviceId(camera)] = camera;
                 List<Surface> outputSurfaces = new ArrayList<>();
-                outputSurfaces.add(new Surface(mSurfaces.get(getDeviceId(camera))));
+                outputSurfaces.add(new Surface(mSurfaces[getDeviceId(camera)]));
                 try {
                     camera.createCaptureSession(outputSurfaces, new CameraCaptureSession.StateCallback() {
                         @Override
@@ -70,7 +83,7 @@ public class CameraCore {
                             mCameraCaptureSession[getSessionId(session)] = session;
                             try {
                                 CaptureRequest.Builder requestBuilder = mCameraDevice[getSessionId(session)].createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
-                                requestBuilder.addTarget(new Surface(mSurfaces.get(getSessionId(session))));
+                                requestBuilder.addTarget(new Surface(mSurfaces[getSessionId(session)]));
                                 session.setRepeatingRequest(requestBuilder.build(), null, mHandler);
                             } catch (CameraAccessException e) {
                                 e.printStackTrace();
@@ -100,7 +113,7 @@ public class CameraCore {
     }
 
     public void Close() {
-        for (int cameraId = 0; cameraId < mSurfaces.size(); cameraId++) {
+        for (int cameraId = 0; cameraId < mSurfaces.length; cameraId++) {
             if (mCameraCaptureSession[cameraId] != null) {
                 mCameraCaptureSession[cameraId].close();
                 mCameraCaptureSession[cameraId] = null;
@@ -130,7 +143,7 @@ public class CameraCore {
     }
 
     private int toIdInt(String cameraId) {
-        Integer lensFacing = 0;
+/*        Integer lensFacing = 0;
         try {
             lensFacing = mCameraManager.getCameraCharacteristics(cameraId).get(CameraCharacteristics.LENS_FACING);
         } catch (CameraAccessException e) {
@@ -143,6 +156,13 @@ public class CameraCore {
                 return FRONT_FACING_CAMERA;
             default:
                 throw new RuntimeException("Illegal Camera ID!");
+        }*/
+        if (cameraId.equals(Rear_Facing_Camera)) {
+            return REAR_FACING_CAMERA;
+        } else if (cameraId.equals(Front_Facing_Camera)) {
+            return FRONT_FACING_CAMERA;
+        } else {
+            throw new RuntimeException("Illegal Camera ID!");
         }
     }
 
@@ -154,7 +174,7 @@ public class CameraCore {
         return toIdInt(session.getDevice().getId());
     }
 
-    static Size chooseBigEnoughSize(Size[] choices, int width, int height) {
+    private static Size chooseBigEnoughSize(Size[] choices, int width, int height) {
         // Collect the supported resolutions that are at least as big as the preview Surface
         List<Size> bigEnough = new ArrayList<>();
         for (Size option : choices) {
